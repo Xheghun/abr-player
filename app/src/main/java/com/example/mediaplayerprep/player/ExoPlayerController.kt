@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 @UnstableApi
 class ExoPlayerController(
@@ -276,7 +277,7 @@ class ExoPlayerController(
         progressJob = scope.launch {
             while (isActive) {
                 publishSnapshot()
-                delay(500)
+                delay(500.milliseconds)
             }
         }
     }

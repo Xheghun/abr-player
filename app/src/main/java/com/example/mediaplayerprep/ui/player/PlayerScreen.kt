@@ -64,6 +64,13 @@ fun PlayerRoot(
     }
     val state = viewModel.state.collectAsStateWithLifecycle().value
     FullscreenOrientationEffect(state.isFullscreen)
+
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.controller.release()
+        }
+    }
+
     PlayerScreen(
         state = state,
         player = viewModel.controller,
