@@ -57,7 +57,7 @@ class ExoPlayerController(
     override val player: ExoPlayer
         get() = activePlayer
 
-    private val _snapshot = MutableStateFlow(PlayerSnapshot(isMuted = mutedState.isMuted, tuning = tuning))
+    private val _snapshot = MutableStateFlow(PlayerSnapshot(player = activePlayer, isMuted = mutedState.isMuted, tuning = tuning))
     override val snapshot: StateFlow<PlayerSnapshot> = _snapshot
 
     private val listener = object : Player.Listener {
@@ -165,15 +165,15 @@ class ExoPlayerController(
         this.tuning = tuning
         manualQualityLabel = null
         rebuildPlayer(tuning)
-        publishSnapshot()
     }
 
     override fun selectAutoQuality() {
         manualQualityLabel = null
-        trackSelector.setParameters(
-            trackSelector.buildUponParameters()
-                .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
-        )
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+            .build()
+
         publishSnapshot()
     }
 
@@ -183,11 +183,13 @@ class ExoPlayerController(
         if (group.type != C.TRACK_TYPE_VIDEO || trackIndex !in 0 until group.length) return
         val override = TrackSelectionOverride(group.mediaTrackGroup, trackIndex)
         manualQualityLabel = group.qualityLabel(trackIndex)
-        trackSelector.setParameters(
-            trackSelector.buildUponParameters()
-                .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
-                .addOverride(override)
-        )
+
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+            .addOverride(override)
+            .build()
+
         publishSnapshot()
     }
 
@@ -241,6 +243,7 @@ class ExoPlayerController(
         }
 
         oldPlayer.release()
+        publishSnapshot()
     }
 
     private fun buildPlayer(): ExoPlayer =
@@ -291,6 +294,7 @@ class ExoPlayerController(
         )
         _snapshot.update {
             it.copy(
+                player = activePlayer,
                 status = status,
                 isPlaying = player.isPlaying,
                 durationMs = duration,

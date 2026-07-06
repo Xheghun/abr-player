@@ -1,6 +1,9 @@
 package com.example.mediaplayerprep.player
 
+import androidx.media3.exoplayer.ExoPlayer
+
 data class PlayerSnapshot(
+    val player: ExoPlayer? = null,
     val status: PlaybackStatus = PlaybackStatus.Idle,
     val isMuted: Boolean = false,
     val isPlaying: Boolean = false,

@@ -109,10 +109,13 @@ fun PlayerScreen(
                 factory = { context ->
                     PlayerView(context).apply {
                         useController = false
-                        this.player = player.player
                     }
                 },
-                update = { it.player = player.player }
+                update = { view ->
+                    if (view.player != state.snapshot.player) {
+                        view.player = state.snapshot.player
+                    }
+                }
             )
             if (state.snapshot.status == PlaybackStatus.Loading || state.snapshot.status == PlaybackStatus.Buffering) {
                 LinearProgressIndicator(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth())
