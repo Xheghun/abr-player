@@ -39,9 +39,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
@@ -73,19 +76,36 @@ fun PlayerRoot(
 
     PlayerScreen(
         state = state,
-        player = viewModel.controller,
         onAction = viewModel::onAction,
         onBack = onBack
     )
 }
 
 @Composable
+fun PlayerLifecycleEffect(onAction: (PlayerAction) -> Unit) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> onAction(PlayerAction.Pause)
+                Lifecycle.Event.ON_RESUME -> onAction(PlayerAction.Play)
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+}
+
+@Composable
 fun PlayerScreen(
     state: PlayerScreenState,
-    player: com.example.mediaplayerprep.player.PlayerController,
     onAction: (PlayerAction) -> Unit,
     onBack: () -> Unit
 ) {
+    PlayerLifecycleEffect(onAction)
     Column(
         modifier = Modifier
             .fillMaxSize()

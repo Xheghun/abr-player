@@ -21,6 +21,8 @@ data class PlayerScreenState(
 )
 
 sealed interface PlayerAction {
+    data object Play : PlayerAction
+    data object Pause : PlayerAction
     data object PlayPause : PlayerAction
     data object ToggleMute : PlayerAction
     data object Retry : PlayerAction
@@ -57,6 +59,8 @@ class PlayerViewModel(
 
     fun onAction(action: PlayerAction) {
         when (action) {
+            PlayerAction.Play -> controller.play()
+            PlayerAction.Pause -> controller.pause()
             PlayerAction.PlayPause -> if (state.value.snapshot.isPlaying) controller.pause() else controller.play()
             PlayerAction.ToggleMute -> controller.setMuted(!state.value.snapshot.isMuted)
             PlayerAction.Retry -> controller.retry()
