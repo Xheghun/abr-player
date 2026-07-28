@@ -38,17 +38,3 @@ The UI never owns raw player behavior. It renders immutable state from ViewModel
 HLS uses an `.m3u8` manifest and segments that can be selected adaptively based on bandwidth and buffer health. DASH uses an `.mpd` manifest with similar adaptive representations. In both cases the player loads a manifest, selects tracks/variants, fetches segments, decodes audio/video, and adapts as network and decoder conditions change.
 
 The important client responsibilities are startup behavior, seek behavior, error handling, buffering policy, track selection, cache policy, lifecycle cleanup, and surfacing enough diagnostics to debug real playback failures.
-
-
-## Custom Codec Extension
-
-Android apps cannot globally register arbitrary app-local codecs into the platform `MediaCodec` list. For a real custom software codec with Media3, you normally add a custom renderer/decoder extension that recognizes a custom MIME type and feeds decoded frames into the playback pipeline.
-
-This sample adds the lower-level native bridge for that path:
-
-- `app/src/main/cpp/native_codec_bridge.cpp`: toy C++ RLE decoder/probe.
-- `CustomCodecRegistry`: declares the sample MIME type `video/x-mediaprep-rle`.
-- `NativeCodecBridge`: loads `libmediaprep_custom_codec.so` and calls the native probe.
-- Debug panel: shows whether the native decoder bridge loaded and decoded the probe frame.
-
-The included C++ code intentionally decodes only a tiny synthetic probe frame. Turning it into real playback support would require a Media3 custom renderer that consumes samples for the custom MIME type, calls the native decoder per access unit, queues decoded frames, handles timestamps, flush/seek, backpressure, and renders to a surface.
