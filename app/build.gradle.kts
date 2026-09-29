@@ -70,6 +70,9 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.media3.datasource)
     implementation(libs.media3.datasource.okhttp)
+    implementation(libs.framewright.media3.adapter)
+    implementation(libs.framewright.bandwidth.monitor)
+    implementation(libs.framewright.codec.inspector)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

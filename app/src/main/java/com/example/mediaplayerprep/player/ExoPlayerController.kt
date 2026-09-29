@@ -1,7 +1,8 @@
 package com.example.mediaplayerprep.player
 
 import android.content.Context
-import android.os.SystemClock
+import android.util.Log
+import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
@@ -19,6 +20,13 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.example.mediaplayerprep.domain.SampleVideo
+import com.xheghun.framewright.bandwidth.BandwidthMonitorConfiguration
+import com.xheghun.framewright.bandwidth.FramewrightBandwidthMeter
+import com.xheghun.framewright.codec.FramewrightCodecInspector
+import com.xheghun.framewright.media3.FramewrightMedia3
+import com.xheghun.framewright.media3.Media3DiagnosticsConfiguration
+import com.xheghun.framewright.media3.Media3DiagnosticsSession
+import com.xheghun.framewright.media3.MediaSessionInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,7 +39,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
-@UnstableApi
+@OptIn(UnstableApi::class)
 class ExoPlayerController(
     context: Context,
     private val mutedState: SharedMutedState,
@@ -44,15 +52,16 @@ class ExoPlayerController(
     private var loadControl = buildLoadControl(defaultTuning)
     private var progressJob: Job? = null
     private var currentVideo: SampleVideo? = null
-    private var loadStartedAtMs: Long? = null
-    private var firstFrameRendered = false
-    private var droppedFrames = 0
     private var lastBitrate: Int? = null
     private var tuning = defaultTuning
     private var manualQualityLabel: String? = null
     private var preloader: ExoPlayer? = null
+    private val preloadBandwidthMeter = DefaultBandwidthMeter.Builder(appContext).build()
+    private val codecInspector = FramewrightCodecInspector()
     private var activePlayer: ExoPlayer = buildPlayer()
+    private var diagnosticsSession: Media3DiagnosticsSession = attachDiagnostics(activePlayer)
     private val customCodecInfo = CustomCodecRegistry.probe()
+    private var released = false
 
     override val player: ExoPlayer
         get() = activePlayer
@@ -78,23 +87,6 @@ class ExoPlayerController(
     }
 
     private val analyticsListener = object : AnalyticsListener {
-        override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
-            if (!firstFrameRendered) {
-                firstFrameRendered = true
-                val timeToFirstFrameMs = loadStartedAtMs?.let { SystemClock.elapsedRealtime() - it }
-                _snapshot.update { it.copy(diagnostics = it.diagnostics.copy(timeToFirstFrameMs = timeToFirstFrameMs)) }
-            }
-        }
-
-        override fun onDroppedVideoFrames(
-            eventTime: AnalyticsListener.EventTime,
-            droppedFrames: Int,
-            elapsedMs: Long
-        ) {
-            this@ExoPlayerController.droppedFrames += droppedFrames
-            publishSnapshot()
-        }
-
         override fun onVideoInputFormatChanged(
             eventTime: AnalyticsListener.EventTime,
             format: Format,
@@ -114,9 +106,7 @@ class ExoPlayerController(
 
     override fun load(video: SampleVideo, playWhenReady: Boolean) {
         currentVideo = video
-        loadStartedAtMs = SystemClock.elapsedRealtime()
-        firstFrameRendered = false
-        droppedFrames = 0
+        lastBitrate = null
         _snapshot.update {
             PlayerSnapshot(
                 status = PlaybackStatus.Loading,
@@ -127,7 +117,9 @@ class ExoPlayerController(
             )
         }
         player.setMediaItem(video.toMediaItem())
-        player.prepare()
+        diagnosticsSession.trackPrepare(MediaSessionInfo(mediaUri = video.url)) {
+            player.prepare()
+        }
         player.playWhenReady = playWhenReady
     }
 
@@ -197,7 +189,7 @@ class ExoPlayerController(
         // A lightweight next-item prepare warms manifests, track metadata, and the shared cache.
         preloader?.release()
         preloader = ExoPlayer.Builder(appContext)
-            .setBandwidthMeter(bandwidthMeter)
+            .setBandwidthMeter(preloadBandwidthMeter)
             .setMediaSourceFactory(DefaultMediaSourceFactory(MediaCache.dataSourceFactory(appContext)))
             .build()
             .also {
@@ -207,7 +199,10 @@ class ExoPlayerController(
     }
 
     override fun release() {
+        if (released) return
+        released = true
         progressJob?.cancel()
+        diagnosticsSession.close()
         player.removeListener(listener)
         player.removeAnalyticsListener(analyticsListener)
         player.release()
@@ -221,6 +216,7 @@ class ExoPlayerController(
         val restorePlayWhenReady = oldPlayer.playWhenReady
         val restoreSpeed = _snapshot.value.playbackSpeed
 
+        diagnosticsSession.close()
         oldPlayer.removeListener(listener)
         oldPlayer.removeAnalyticsListener(analyticsListener)
 
@@ -228,16 +224,18 @@ class ExoPlayerController(
         trackSelector = buildTrackSelector(tuning)
         loadControl = buildLoadControl(tuning)
         activePlayer = buildPlayer()
+        diagnosticsSession = attachDiagnostics(activePlayer)
         activePlayer.addListener(listener)
         activePlayer.addAnalyticsListener(analyticsListener)
         activePlayer.volume = if (mutedState.isMuted) 0f else 1f
         activePlayer.setPlaybackSpeed(restoreSpeed)
 
         restoreVideo?.let {
-            loadStartedAtMs = SystemClock.elapsedRealtime()
-            firstFrameRendered = false
+            lastBitrate = null
             activePlayer.setMediaItem(it.toMediaItem())
-            activePlayer.prepare()
+            diagnosticsSession.trackPrepare(MediaSessionInfo(mediaUri = it.url)) {
+                activePlayer.prepare()
+            }
             activePlayer.seekTo(restorePositionMs)
             activePlayer.playWhenReady = restorePlayWhenReady
         }
@@ -254,11 +252,29 @@ class ExoPlayerController(
             .setMediaSourceFactory(DefaultMediaSourceFactory(MediaCache.dataSourceFactory(appContext)))
             .build()
 
-    private fun buildBandwidthMeter(tuning: PlaybackTuning): DefaultBandwidthMeter =
-        DefaultBandwidthMeter.Builder(appContext)
-            .setInitialBitrateEstimate(tuning.initialBitrateEstimate)
-            .setSlidingWindowMaxWeight(tuning.bandwidthSlidingWindowMaxWeight)
-            .build()
+    private fun buildBandwidthMeter(tuning: PlaybackTuning): FramewrightBandwidthMeter =
+        FramewrightBandwidthMeter(
+            context = appContext,
+            configuration = BandwidthMonitorConfiguration(
+                initialBitrateEstimateBps = tuning.initialBitrateEstimate
+            ),
+            onDiagnosticsError = ::reportDiagnosticsError
+        )
+
+    private fun attachDiagnostics(player: ExoPlayer): Media3DiagnosticsSession =
+        FramewrightMedia3.attach(
+            context = appContext,
+            player = player,
+            contributors = listOf(bandwidthMeter),
+            configuration = Media3DiagnosticsConfiguration(
+                decoderCapabilityResolver = codecInspector,
+                onDiagnosticsError = ::reportDiagnosticsError
+            )
+        )
+
+    private fun reportDiagnosticsError(error: Throwable) {
+        Log.w(FRAMEWRIGHT_LOG_TAG, "Playback diagnostics failure", error)
+    }
 
     private fun buildTrackSelector(tuning: PlaybackTuning): DefaultTrackSelector =
         DefaultTrackSelector(appContext).apply {
@@ -287,6 +303,10 @@ class ExoPlayerController(
 
     private fun publishSnapshot() {
         val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0L
+        val framewrightDiagnostics = FramewrightDiagnosticsMapper.map(
+            playbackSnapshot = diagnosticsSession.currentSnapshot(),
+            bandwidthEstimate = bandwidthMeter.currentEstimate
+        )
         val status = PlaybackStateMapper.map(
             playbackState = player.playbackState,
             playWhenReady = player.playWhenReady,
@@ -304,8 +324,6 @@ class ExoPlayerController(
                 technicalError = if (status == PlaybackStatus.Error) it.technicalError else null,
                 diagnostics = PlayerDiagnostics(
                     bitrate = lastBitrate,
-                    bandwidthEstimate = bandwidthMeter.bitrateEstimate.takeIf { estimate -> estimate > 0 },
-                    droppedFrames = droppedFrames,
                     selectedVideoTrack = player.currentTracks.describe(C.TRACK_TYPE_VIDEO),
                     selectedAudioTrack = player.currentTracks.describe(C.TRACK_TYPE_AUDIO),
                     selectedTextTrack = player.currentTracks.describe(C.TRACK_TYPE_TEXT),
@@ -313,7 +331,7 @@ class ExoPlayerController(
                     playbackPositionMs = player.currentPosition.coerceAtLeast(0L),
                     bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0L),
                     playerState = status.name,
-                    timeToFirstFrameMs = it.diagnostics.timeToFirstFrameMs
+                    framewright = framewrightDiagnostics
                 ),
                 tuning = tuning,
                 qualityOptions = player.currentTracks.videoQualityOptions(),
@@ -406,3 +424,5 @@ class ExoPlayerController(
 }
 
 class SharedMutedState(var isMuted: Boolean = false)
+
+private const val FRAMEWRIGHT_LOG_TAG = "Framewright"
