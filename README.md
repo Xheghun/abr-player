@@ -24,8 +24,8 @@ The UI never owns raw player behavior. It renders immutable state from ViewModel
 - Custom controls: play/pause, mute/unmute, seek, speed, fullscreen orientation toggle, retry.
 - Playback state model: idle, loading, buffering, ready/paused, playing, ended, error.
 - User-friendly error message plus technical details in the debug panel.
-- Diagnostics: bitrate when available, dropped frames, selected audio/video/text track, position, buffered position, player state, and time-to-first-frame.
-- ABR tuning: explicit `DefaultTrackSelector`, max/min bitrate constraints, preferred resolution/viewport, custom `LoadControl`, custom `DefaultBandwidthMeter`, and manual quality overrides.
+- Diagnostics: Framewright session events and summaries, startup time, rebuffers, dropped frames, selected tracks, bandwidth estimates, and selected decoder capabilities.
+- ABR tuning: explicit `DefaultTrackSelector`, max/min bitrate constraints, preferred resolution/viewport, custom `LoadControl`, `FramewrightBandwidthMeter`, and manual quality overrides.
 - Custom codec extension point: a small NDK/C++ demo decoder is built with CMake, loaded through JNI, and surfaced in the debug panel as a native codec probe.
 - Media3 `SimpleCache` through `CacheDataSource.Factory`, capped with LRU eviction.
 - Preloading demo: the next item is prepared with a secondary player to warm manifests, track metadata, and cache.

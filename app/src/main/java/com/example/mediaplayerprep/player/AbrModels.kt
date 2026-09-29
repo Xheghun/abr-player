@@ -11,8 +11,7 @@ data class PlaybackTuning(
     val maxBufferMs: Int = 50_000,
     val bufferForPlaybackMs: Int = 1_500,
     val bufferForPlaybackAfterRebufferMs: Int = 3_000,
-    val initialBitrateEstimate: Long = 2_000_000L,
-    val bandwidthSlidingWindowMaxWeight: Int = 2_000
+    val initialBitrateEstimate: Long = 2_000_000L
 ) {
     val summary: String
         get() = "min=${minVideoBitrate.kbpsLabel()}, max=${maxVideoBitrate.kbpsLabel()}, " +

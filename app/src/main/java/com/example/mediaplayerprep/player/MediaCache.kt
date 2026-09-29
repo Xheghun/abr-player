@@ -1,6 +1,7 @@
 package com.example.mediaplayerprep.player
 
 import android.content.Context
+import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DefaultDataSource
@@ -9,7 +10,7 @@ import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import java.io.File
 
-@UnstableApi
+@OptIn(UnstableApi::class)
 object MediaCache {
     private const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
     private lateinit var appContext: Context

@@ -256,22 +256,36 @@ private fun ErrorPanel(message: String, technical: String?, onRetry: () -> Unit)
 
 @Composable
 fun DebugPanel(snapshot: PlayerSnapshot) {
-    val d = snapshot.diagnostics
+    val diagnostics = snapshot.diagnostics
+    val framewrightDiagnostics = diagnostics.framewright
     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("Diagnostics", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text("Bitrate: ${d.bitrate?.let { "${it / 1000} kbps" } ?: "unknown"}")
-        Text("Bandwidth estimate: ${d.bandwidthEstimate?.let { "${it / 1000} kbps" } ?: "unknown"}")
-        Text("Dropped frames: ${d.droppedFrames}")
-        Text("Video: ${d.selectedVideoTrack}")
-        Text("Audio: ${d.selectedAudioTrack}")
-        Text("Text: ${d.selectedTextTrack}")
-        Text("Custom codec: ${d.customCodec?.summary ?: "not probed"}")
-        Text("Position: ${d.playbackPositionMs} ms")
-        Text("Buffered: ${d.bufferedPositionMs} ms")
-        Text("Player state: ${d.playerState}")
+        Text("Bitrate: ${diagnostics.bitrate?.let { "${it / 1000} kbps" } ?: "unknown"}")
+        Text("Video: ${diagnostics.selectedVideoTrack}")
+        Text("Audio: ${diagnostics.selectedAudioTrack}")
+        Text("Text: ${diagnostics.selectedTextTrack}")
+        Text("Custom codec: ${diagnostics.customCodec?.summary ?: "not probed"}")
+        Text("Position: ${diagnostics.playbackPositionMs} ms")
+        Text("Buffered: ${diagnostics.bufferedPositionMs} ms")
+        Text("Player state: ${diagnostics.playerState}")
         Text("Manual quality: ${snapshot.manualQualityLabel ?: "Auto ABR"}")
         Text("ABR constraints: ${snapshot.tuning.summary}")
-        Text("Time to first frame: ${d.timeToFirstFrameMs?.let { "$it ms" } ?: "pending"}")
+        Text("Framewright session: ${framewrightDiagnostics.sessionId ?: "pending"}")
+        Text("Captured events: ${framewrightDiagnostics.diagnosticEventCount}")
+        Text("Time to first frame: ${framewrightDiagnostics.timeToFirstFrameMs?.let { "$it ms" } ?: "pending"}")
+        Text("Rebuffers: ${framewrightDiagnostics.rebufferCount} (${framewrightDiagnostics.totalRebufferDurationMs} ms)")
+        Text("Dropped frames: ${framewrightDiagnostics.droppedFrameCount}")
+        Text("Framewright bandwidth: ${formatBitrate(framewrightDiagnostics.drivingBandwidthEstimateBps)}")
+        Text("Fast EWMA: ${formatBitrate(framewrightDiagnostics.fastBandwidthEstimateBps)}")
+        Text("Slow EWMA: ${formatBitrate(framewrightDiagnostics.slowBandwidthEstimateBps)}")
+        Text("Media3 comparison: ${formatBitrate(framewrightDiagnostics.media3BandwidthEstimateBps)}")
+        Text(
+            "Bandwidth confidence: ${formatConfidence(framewrightDiagnostics.bandwidthConfidence)} " +
+                "(${framewrightDiagnostics.bandwidthSampleCount} samples)"
+        )
+        Text("Decoder: ${framewrightDiagnostics.decoderName ?: "pending"}")
+        Text("Decoder implementation: ${framewrightDiagnostics.decoderImplementationType ?: "unknown"}")
+        Text("Selected format support: ${framewrightDiagnostics.selectedFormatSupport ?: "unknown"}")
         Text("Captions: one HLS item attaches a WebVTT sidecar; production apps should surface Media3 text track selection.")
     }
 }
@@ -296,3 +310,9 @@ private fun formatMs(ms: Long): String {
     val seconds = totalSeconds % 60
     return "%d:%02d".format(minutes, seconds)
 }
+
+private fun formatBitrate(bitrateBps: Long?): String =
+    bitrateBps?.let { "${it / 1_000} kbps" } ?: "unknown"
+
+private fun formatConfidence(confidence: Double?): String =
+    confidence?.let { "${(it * 100).toInt()}%" } ?: "unknown"
